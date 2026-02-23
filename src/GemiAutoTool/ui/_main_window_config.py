@@ -18,6 +18,7 @@ class MainWindowGlobalConfigMixin:
             "max_concurrent": MAX_CONCURRENT_WINDOWS,
             "auto_scroll_log": True,
             "clear_task_table_on_start": True,
+            "browser_window_mode": "headless",
             "theme_mode": "auto",
             "input_dir": INPUT_DIR,
             "output_dir": OUTPUT_DIR,
@@ -46,6 +47,7 @@ class MainWindowGlobalConfigMixin:
         max_concurrent = max(1, min(32, max_concurrent))
         auto_scroll = self._safe_bool(self._ui_settings.get("auto_scroll_log"), True)
         auto_clear = self._safe_bool(self._ui_settings.get("clear_task_table_on_start"), True)
+        browser_window_mode = self._normalize_browser_window_mode(self._ui_settings.get("browser_window_mode"))
         theme_mode = self._normalize_theme_mode(self._ui_settings.get("theme_mode"))
         input_dir = self._normalize_dir_path(self._ui_settings.get("input_dir"), INPUT_DIR)
         output_dir = self._normalize_dir_path(self._ui_settings.get("output_dir"), OUTPUT_DIR)
@@ -53,6 +55,8 @@ class MainWindowGlobalConfigMixin:
         self.concurrency_spin.setValue(max_concurrent)
         self.auto_scroll_log_check.setChecked(auto_scroll)
         self.clear_task_table_on_start_check.setChecked(auto_clear)
+        browser_mode_index = self.browser_window_mode_combo.findData(browser_window_mode)
+        self.browser_window_mode_combo.setCurrentIndex(browser_mode_index if browser_mode_index >= 0 else 0)
         self.input_dir_edit.setText(input_dir)
         self.output_dir_edit.setText(output_dir)
         theme_index = self.theme_mode_combo.findData(theme_mode)
@@ -67,6 +71,7 @@ class MainWindowGlobalConfigMixin:
             "max_concurrent": int(self.concurrency_spin.value()),
             "auto_scroll_log": bool(self.auto_scroll_log_check.isChecked()),
             "clear_task_table_on_start": bool(self.clear_task_table_on_start_check.isChecked()),
+            "browser_window_mode": str(self.browser_window_mode_combo.currentData() or "headless"),
             "theme_mode": str(self.theme_mode_combo.currentData() or "auto"),
             "input_dir": input_dir,
             "output_dir": output_dir,
@@ -125,13 +130,18 @@ class MainWindowGlobalConfigMixin:
             and self.clear_task_table_on_start_check.isChecked()
             else "关"
         )
+        browser_mode_name_map = {"visible": "可见", "minimized": "最小化", "headless": "无头(实验性)"}
+        browser_mode = "headless"
+        if getattr(self, "browser_window_mode_combo", None):
+            browser_mode = str(self.browser_window_mode_combo.currentData() or "headless")
+        browser_mode_name = browser_mode_name_map.get(browser_mode, browser_mode)
         theme_name_map = {"auto": "自动", "light": "亮色", "dark": "暗色"}
         theme_mode = "auto"
         if getattr(self, "theme_mode_combo", None):
             theme_mode = str(self.theme_mode_combo.currentData() or "auto")
         theme_name = theme_name_map.get(theme_mode, theme_mode)
         self.home_runtime_label.setText(
-            f"默认并发: {concurrency}  |  日志自动滚动: {auto_scroll}  |  启动前清空任务表: {auto_clear}  |  主题: {theme_name}"
+            f"默认并发: {concurrency}  |  浏览器模式: {browser_mode_name}  |  日志自动滚动: {auto_scroll}  |  启动前清空任务表: {auto_clear}  |  主题: {theme_name}"
         )
         self.home_path_info_label.setText(f"输入目录: {self._get_configured_input_dir()}")
         self.home_output_info_label.setText(f"输出目录: {self._get_configured_output_dir()}")
@@ -145,6 +155,11 @@ class MainWindowGlobalConfigMixin:
         if hasattr(self, "output_dir_edit"):
             return self._normalize_dir_path(self.output_dir_edit.text(), OUTPUT_DIR)
         return self._normalize_dir_path(self._ui_settings.get("output_dir"), OUTPUT_DIR)
+
+    def _get_configured_browser_window_mode(self) -> str:
+        if hasattr(self, "browser_window_mode_combo"):
+            return self._normalize_browser_window_mode(self.browser_window_mode_combo.currentData())
+        return self._normalize_browser_window_mode(self._ui_settings.get("browser_window_mode"))
 
     @staticmethod
     def _safe_int(value: object, default: int) -> int:
@@ -211,6 +226,12 @@ class MainWindowGlobalConfigMixin:
         self.theme_mode_combo.currentIndexChanged.connect(self._on_theme_mode_changed)
         self.theme_mode_combo.currentIndexChanged.connect(self._refresh_home_header_summary)
 
+        self.browser_window_mode_combo = QtWidgets.QComboBox()
+        self.browser_window_mode_combo.addItem("可见", "visible")
+        self.browser_window_mode_combo.addItem("最小化", "minimized")
+        self.browser_window_mode_combo.addItem("无头（实验性）", "headless")
+        self.browser_window_mode_combo.currentIndexChanged.connect(self._refresh_home_header_summary)
+
         self.auto_scroll_log_check = QtWidgets.QCheckBox("日志面板自动滚动到底部")
         self.clear_task_table_on_start_check = QtWidgets.QCheckBox("每次开始前自动清空任务表")
         self.auto_scroll_log_check.toggled.connect(self._refresh_home_header_summary)
@@ -218,10 +239,12 @@ class MainWindowGlobalConfigMixin:
 
         grid.addWidget(QtWidgets.QLabel("默认并发数"), 0, 0)
         grid.addWidget(self.concurrency_spin, 0, 1)
-        grid.addWidget(QtWidgets.QLabel("主题模式"), 1, 0)
-        grid.addWidget(self.theme_mode_combo, 1, 1)
-        grid.addWidget(self.auto_scroll_log_check, 2, 0, 1, 2)
-        grid.addWidget(self.clear_task_table_on_start_check, 3, 0, 1, 2)
+        grid.addWidget(QtWidgets.QLabel("浏览器展示模式"), 1, 0)
+        grid.addWidget(self.browser_window_mode_combo, 1, 1)
+        grid.addWidget(QtWidgets.QLabel("主题模式"), 2, 0)
+        grid.addWidget(self.theme_mode_combo, 2, 1)
+        grid.addWidget(self.auto_scroll_log_check, 3, 0, 1, 2)
+        grid.addWidget(self.clear_task_table_on_start_check, 4, 0, 1, 2)
         return group
 
     def _build_global_paths_group(self) -> QtWidgets.QGroupBox:
@@ -308,6 +331,14 @@ class MainWindowGlobalConfigMixin:
             if mode in {"auto", "light", "dark"}:
                 return mode
         return "auto"
+
+    @staticmethod
+    def _normalize_browser_window_mode(value: object) -> str:
+        if isinstance(value, str):
+            mode = value.strip().lower()
+            if mode in {"visible", "minimized", "headless"}:
+                return mode
+        return "headless"
 
     def _browse_input_dir(self) -> None:
         selected = QtWidgets.QFileDialog.getExistingDirectory(

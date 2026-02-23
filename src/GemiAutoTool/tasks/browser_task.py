@@ -27,6 +27,7 @@ def run_browser_task(
     task_name: str,
     output_service: SubscriptionOutputService,
     payment_data_service,
+    browser_window_mode: str = "headless",
     event_callback: TaskEventCallback | None = None,
 ):
     """
@@ -44,7 +45,7 @@ def run_browser_task(
     logger.info("开始处理账号: %s", account.email)
     emit("progress", stage="初始化浏览器", detail="开始处理账号")
 
-    browser = IsolatedBrowser(task_name)
+    browser = IsolatedBrowser(task_name, window_mode=browser_window_mode)
     final_summary = {
         "result_kind": "unknown",
         "business_status": "未完成",

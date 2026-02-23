@@ -25,11 +25,13 @@ class AutomationWorker(QtCore.QObject):
         max_concurrent: int,
         input_dir: str | None = None,
         output_dir: str | None = None,
+        browser_window_mode: str = "headless",
         retry_emails: list[str] | None = None,
         parent: QtCore.QObject | None = None,
     ):
         super().__init__(parent)
         self._max_concurrent = max_concurrent
+        self._browser_window_mode = str(browser_window_mode or "headless")
         self._retry_emails = list(retry_emails or [])
         self._controller = AutomationController(
             event_callback=self._emit_controller_event,
@@ -57,6 +59,7 @@ class AutomationWorker(QtCore.QObject):
             self.run_started.emit()
             ok = self._controller.run(
                 max_concurrent_windows=self._max_concurrent,
+                browser_window_mode=self._browser_window_mode,
                 retry_emails=self._retry_emails or None,
             )
             self.run_finished.emit({"ok": ok})

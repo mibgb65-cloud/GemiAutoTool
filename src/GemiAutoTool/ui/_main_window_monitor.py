@@ -1,6 +1,5 @@
 """MainWindow monitor page, runtime orchestration, log and task table handling."""
 
-import html
 from datetime import datetime
 
 from PySide6 import QtCore, QtGui, QtWidgets
@@ -10,6 +9,7 @@ from GemiAutoTool.ui.workers import AutomationWorker
 
 class MainWindowMonitorMixin:
     def _build_monitor_page(self) -> QtWidgets.QWidget:
+        self._ensure_monitor_perf_helpers()
         page = QtWidgets.QWidget()
         layout = QtWidgets.QVBoxLayout(page)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -76,7 +76,7 @@ class MainWindowMonitorMixin:
         self.start_btn.clicked.connect(self._start_run)
         self.stop_btn.clicked.connect(self._request_stop)
         retry_failed_btn.clicked.connect(self._retry_failed_tasks)
-        clear_log_btn.clicked.connect(self.log_view.clear)
+        clear_log_btn.clicked.connect(self._clear_log_view)
         clear_tasks_btn.clicked.connect(self._clear_task_table)
         export_links_btn.clicked.connect(self._export_sheerid_links_from_file)
         export_latest_links_btn.clicked.connect(self._export_sheerid_links_from_latest_result)
@@ -131,16 +131,24 @@ class MainWindowMonitorMixin:
         self.task_table = QtWidgets.QTableWidget(0, 7)
         self.task_table.setHorizontalHeaderLabels(["任务", "账号", "线程状态", "业务阶段", "最终结果", "详情", "更新时间"])
         self.task_table.horizontalHeader().setStretchLastSection(True)
-        self.task_table.horizontalHeader().setSectionResizeMode(0, QtWidgets.QHeaderView.ResizeMode.ResizeToContents)
+        self.task_table.horizontalHeader().setSectionResizeMode(0, QtWidgets.QHeaderView.ResizeMode.Interactive)
         self.task_table.horizontalHeader().setSectionResizeMode(1, QtWidgets.QHeaderView.ResizeMode.Stretch)
-        self.task_table.horizontalHeader().setSectionResizeMode(2, QtWidgets.QHeaderView.ResizeMode.ResizeToContents)
-        self.task_table.horizontalHeader().setSectionResizeMode(3, QtWidgets.QHeaderView.ResizeMode.ResizeToContents)
-        self.task_table.horizontalHeader().setSectionResizeMode(4, QtWidgets.QHeaderView.ResizeMode.ResizeToContents)
+        self.task_table.horizontalHeader().setSectionResizeMode(2, QtWidgets.QHeaderView.ResizeMode.Interactive)
+        self.task_table.horizontalHeader().setSectionResizeMode(3, QtWidgets.QHeaderView.ResizeMode.Interactive)
+        self.task_table.horizontalHeader().setSectionResizeMode(4, QtWidgets.QHeaderView.ResizeMode.Interactive)
         self.task_table.horizontalHeader().setSectionResizeMode(5, QtWidgets.QHeaderView.ResizeMode.Stretch)
+        self.task_table.horizontalHeader().setSectionResizeMode(6, QtWidgets.QHeaderView.ResizeMode.Interactive)
+        self.task_table.setColumnWidth(0, 110)
+        self.task_table.setColumnWidth(2, 90)
+        self.task_table.setColumnWidth(3, 120)
+        self.task_table.setColumnWidth(4, 130)
+        self.task_table.setColumnWidth(6, 90)
         self.task_table.verticalHeader().setVisible(False)
         self.task_table.setEditTriggers(QtWidgets.QAbstractItemView.EditTrigger.NoEditTriggers)
         self.task_table.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectionBehavior.SelectRows)
         self.task_table.setAlternatingRowColors(True)
+        self.task_table.setWordWrap(False)
+        self.task_table.setTextElideMode(QtCore.Qt.TextElideMode.ElideRight)
         layout.addWidget(self.task_table)
         return group
 
@@ -148,8 +156,10 @@ class MainWindowMonitorMixin:
         group = QtWidgets.QGroupBox("实时日志")
         layout = QtWidgets.QVBoxLayout(group)
 
-        self.log_view = QtWidgets.QTextEdit()
+        self.log_view = QtWidgets.QPlainTextEdit()
         self.log_view.setReadOnly(True)
+        self.log_view.setUndoRedoEnabled(False)
+        self.log_view.setMaximumBlockCount(3000)
         font = QtGui.QFont("Consolas")
         font.setStyleHint(QtGui.QFont.StyleHint.Monospace)
         self.log_view.setFont(font)
@@ -177,11 +187,18 @@ class MainWindowMonitorMixin:
 
         if self.clear_task_table_on_start_check.isChecked():
             self._clear_task_table()
+        self._current_run_task_names.clear()
         self._scheduled_tasks_total = 0
+        self._launched_tasks_total = 0
+        self._stop_requested_in_run = False
+        self._last_run_stopped = False
+        browser_window_mode = self._get_configured_browser_window_mode()
         input_dir = self._get_configured_input_dir()
         output_dir = self._get_configured_output_dir()
+        browser_mode_name_map = {"visible": "可见", "minimized": "最小化", "headless": "无头(实验性)"}
         self._append_system_log("INFO", "UI", "-", f"使用输入目录: {input_dir}")
         self._append_system_log("INFO", "UI", "-", f"使用输出目录: {output_dir}")
+        self._append_system_log("INFO", "UI", "-", f"浏览器模式: {browser_mode_name_map.get(browser_window_mode, browser_window_mode)}")
         if retry_emails:
             self._append_system_log("INFO", "UI", "-", f"开始失败任务重试（排除需验证），目标账号数: {len(retry_emails)}")
         else:
@@ -193,6 +210,7 @@ class MainWindowMonitorMixin:
             max_concurrent=self.concurrency_spin.value(),
             input_dir=input_dir,
             output_dir=output_dir,
+            browser_window_mode=browser_window_mode,
             retry_emails=retry_emails,
         )
         self._worker.moveToThread(self._worker_thread)
@@ -228,8 +246,10 @@ class MainWindowMonitorMixin:
     def _request_stop(self) -> None:
         if not self._worker:
             return
-        self.run_state_label.setText("停止中...")
-        self._append_system_log("WARNING", "UI", "-", "已发送停止请求（等待已启动任务结束）")
+        self._stop_requested_in_run = True
+        self.run_state_label.setText("硬停止中...")
+        self._append_system_log("WARNING", "UI", "-", "已发送硬停止请求（将强制关闭浏览器窗口）")
+        self._schedule_summary_refresh()
         self._worker.request_stop()
 
     def _on_run_started(self) -> None:
@@ -241,9 +261,13 @@ class MainWindowMonitorMixin:
 
     def _on_run_finished(self, payload: dict) -> None:
         ok = payload.get("ok", False)
-        self.run_state_label.setText("空闲" if ok else "结束(失败)")
+        if self._last_run_stopped and ok:
+            self.run_state_label.setText("已停止")
+        else:
+            self.run_state_label.setText("空闲" if ok else "结束(失败)")
         self.start_btn.setEnabled(True)
         self.stop_btn.setEnabled(False)
+        self._schedule_summary_refresh()
 
     def _cleanup_worker(self) -> None:
         if self._worker:
@@ -256,7 +280,11 @@ class MainWindowMonitorMixin:
     def _on_controller_event(self, event: dict) -> None:
         event_type = event.get("type", "")
         if event_type == "run_started":
+            self._current_run_task_names.clear()
             self._scheduled_tasks_total = int(event.get("scheduled_tasks", 0) or 0)
+            self._launched_tasks_total = 0
+            self._stop_requested_in_run = False
+            self._last_run_stopped = False
             retry_mode = bool(event.get("retry_mode", False))
             retry_part = ""
             if retry_mode:
@@ -272,7 +300,7 @@ class MainWindowMonitorMixin:
                     f"{retry_part}"
                 ),
             )
-            self._refresh_summary()
+            self._schedule_summary_refresh()
             return
 
         if event_type == "run_error":
@@ -280,17 +308,25 @@ class MainWindowMonitorMixin:
             return
 
         if event_type == "stop_requested":
-            self._append_system_log("WARNING", "Controller", "-", "控制器已收到停止请求")
+            self._stop_requested_in_run = True
+            closed = int(event.get("force_closed_browsers", 0) or 0)
+            hard = bool(event.get("hard", False))
+            if hard:
+                self._append_system_log("WARNING", "Controller", "-", f"控制器已执行硬停止，强制关闭浏览器窗口: {closed} 个")
+            else:
+                self._append_system_log("WARNING", "Controller", "-", "控制器已收到停止请求")
+            self._schedule_summary_refresh()
             return
 
         if event_type == "task_scheduled":
+            self._launched_tasks_total += 1
             self._upsert_task_row(
                 event.get("task_name", "-"),
                 event.get("email", "-"),
                 thread_status="queued",
                 stage="待启动",
             )
-            self._refresh_summary()
+            self._schedule_summary_refresh()
             return
 
         if event_type == "task_started":
@@ -300,7 +336,7 @@ class MainWindowMonitorMixin:
                 thread_status="running",
                 stage="线程已启动",
             )
-            self._refresh_summary()
+            self._schedule_summary_refresh()
             return
 
         if event_type == "task_progress":
@@ -320,7 +356,7 @@ class MainWindowMonitorMixin:
                 result=self._display_result_text(result_kind, str(event.get("business_status", ""))),
                 detail=str(event.get("detail", "")),
             )
-            self._refresh_summary()
+            self._schedule_summary_refresh()
             return
 
         if event_type == "task_finished":
@@ -338,13 +374,23 @@ class MainWindowMonitorMixin:
                 ),
                 detail=str(event.get("detail", event.get("error", ""))),
             )
-            self._refresh_summary()
+            self._schedule_summary_refresh()
             return
 
         if event_type == "run_finished":
             stopped = bool(event.get("stopped", False))
-            msg = "运行已停止" if stopped else "运行已完成"
+            self._last_run_stopped = stopped
+            self._launched_tasks_total = int(event.get("launched_tasks", self._launched_tasks_total) or self._launched_tasks_total)
+            if stopped:
+                unlaunched = max(self._scheduled_tasks_total - self._launched_tasks_total, 0)
+                msg = (
+                    f"运行已停止（已启动 {self._launched_tasks_total} / 计划 {self._scheduled_tasks_total}"
+                    f" / 未启动 {unlaunched}）"
+                )
+            else:
+                msg = f"运行已完成（已启动 {self._launched_tasks_total} / 计划 {self._scheduled_tasks_total}）"
             self._append_system_log("INFO", "Controller", "-", msg)
+            self._schedule_summary_refresh()
             return
 
     def _on_log_record(self, record: dict) -> None:
@@ -364,19 +410,9 @@ class MainWindowMonitorMixin:
         message: str,
         time_text: str | None = None,
     ) -> None:
-        colors = {
-            "DEBUG": "#4aa3df",
-            "INFO": "#2e7d32",
-            "WARNING": "#b26a00",
-            "ERROR": "#c62828",
-            "CRITICAL": "#7b1fa2",
-        }
-        color = colors.get(level.upper(), "#333333")
         ts = time_text or datetime.now().strftime("%H:%M:%S")
         line = f"{ts} | {level:<8} | task={task_name} | {logger_name} | {message}"
-        self.log_view.append(f'<span style="color:{color}">{html.escape(line)}</span>')
-        if self.auto_scroll_log_check.isChecked():
-            self.log_view.moveCursor(QtGui.QTextCursor.MoveOperation.End)
+        self._queue_log_line(line)
 
     def _upsert_task_row(
         self,
@@ -388,6 +424,8 @@ class MainWindowMonitorMixin:
         result: str | None = None,
         detail: str | None = None,
     ) -> None:
+        if task_name and task_name != "-":
+            self._current_run_task_names.add(task_name)
         row = self._task_rows.get(task_name)
         state = self._task_state_map.setdefault(
             task_name,
@@ -429,7 +467,7 @@ class MainWindowMonitorMixin:
                 item = self.task_table.item(row, col)
                 if item is None:
                     self.task_table.setItem(row, col, QtWidgets.QTableWidgetItem(text))
-                else:
+                elif item.text() != text:
                     item.setText(text)
 
         self._colorize_cells(row, state.get("thread_status", ""), state.get("result", ""))
@@ -460,14 +498,28 @@ class MainWindowMonitorMixin:
         self.task_table.setRowCount(0)
         self._task_rows.clear()
         self._task_state_map.clear()
+        self._current_run_task_names.clear()
         self._scheduled_tasks_total = 0
-        self._refresh_summary()
+        self._launched_tasks_total = 0
+        self._stop_requested_in_run = False
+        self._last_run_stopped = False
+        self._schedule_summary_refresh(force=True)
 
     def _refresh_summary(self) -> None:
         thread_counts = {"queued": 0, "running": 0, "finished": 0, "crashed": 0}
         result_counts = {"success": 0, "failed": 0, "needs_verify": 0, "other": 0}
 
-        for state in self._task_state_map.values():
+        current_run_task_names = getattr(self, "_current_run_task_names", set())
+        if current_run_task_names:
+            states_for_summary = [
+                self._task_state_map[name]
+                for name in current_run_task_names
+                if name in self._task_state_map
+            ]
+        else:
+            states_for_summary = []
+
+        for state in states_for_summary:
             thread_status = state.get("thread_status", "")
             if thread_status in thread_counts:
                 thread_counts[thread_status] += 1
@@ -482,16 +534,94 @@ class MainWindowMonitorMixin:
                 result_counts["other"] += 1
 
         completed = thread_counts["finished"] + thread_counts["crashed"]
-        total = self._scheduled_tasks_total or len(self._task_state_map)
-        progress_percent = int((completed / total) * 100) if total else 0
+        planned_total = int(getattr(self, "_scheduled_tasks_total", 0) or 0)
+        launched_total = int(getattr(self, "_launched_tasks_total", 0) or 0)
+        stop_requested = bool(getattr(self, "_stop_requested_in_run", False))
+        run_stopped = bool(getattr(self, "_last_run_stopped", False))
+
+        use_launched_total = (stop_requested or run_stopped) and launched_total > 0
+        total = launched_total if use_launched_total else (planned_total or len(states_for_summary))
+        total = max(total, completed)
+        progress_percent = min(100, int((completed / total) * 100)) if total else 0
         self.progress_bar.setValue(progress_percent)
-        self.progress_text_label.setText(f"{completed} / {total}")
+        if planned_total and (stop_requested or run_stopped):
+            unlaunched = max(planned_total - launched_total, 0)
+            progress_text = f"{completed} / {total}（计划 {planned_total}，未启动 {unlaunched}）"
+        else:
+            progress_text = f"{completed} / {total}"
+        self.progress_text_label.setText(progress_text)
+
+        run_counts_text = ""
+        if planned_total:
+            run_counts_text = f"  planned={planned_total}  launched={launched_total}"
+            if stop_requested or run_stopped:
+                run_counts_text += f"  unlaunched={max(planned_total - launched_total, 0)}"
         self.summary_label.setText(
             f"queued={thread_counts['queued']}  running={thread_counts['running']}  "
             f"finished={thread_counts['finished']}  crashed={thread_counts['crashed']}  "
             f"success={result_counts['success']}  failed={result_counts['failed']}  "
-            f"need_verify={result_counts['needs_verify']}"
+            f"need_verify={result_counts['needs_verify']}{run_counts_text}"
         )
+
+    def _ensure_monitor_perf_helpers(self) -> None:
+        if hasattr(self, "_log_flush_timer") and hasattr(self, "_summary_flush_timer"):
+            return
+
+        self._pending_log_lines: list[str] = []
+        self._summary_refresh_pending = False
+
+        self._log_flush_timer = QtCore.QTimer(self)
+        self._log_flush_timer.setSingleShot(True)
+        self._log_flush_timer.timeout.connect(self._flush_pending_logs)
+
+        self._summary_flush_timer = QtCore.QTimer(self)
+        self._summary_flush_timer.setSingleShot(True)
+        self._summary_flush_timer.timeout.connect(self._flush_scheduled_summary_refresh)
+
+    def _queue_log_line(self, line: str) -> None:
+        self._ensure_monitor_perf_helpers()
+        self._pending_log_lines.append(line)
+        if len(self._pending_log_lines) > 5000:
+            self._pending_log_lines = self._pending_log_lines[-3000:]
+        if not self._log_flush_timer.isActive():
+            self._log_flush_timer.start(40)
+
+    def _flush_pending_logs(self) -> None:
+        pending = getattr(self, "_pending_log_lines", None)
+        if not pending:
+            return
+        lines = pending[:]
+        self._pending_log_lines.clear()
+
+        self.log_view.appendPlainText("\n".join(lines))
+        if self.auto_scroll_log_check.isChecked():
+            self.log_view.moveCursor(QtGui.QTextCursor.MoveOperation.End)
+
+    def _clear_log_view(self) -> None:
+        self._ensure_monitor_perf_helpers()
+        if self._log_flush_timer.isActive():
+            self._log_flush_timer.stop()
+        self._pending_log_lines.clear()
+        self.log_view.clear()
+
+    def _schedule_summary_refresh(self, *, force: bool = False) -> None:
+        self._ensure_monitor_perf_helpers()
+        if force:
+            if self._summary_flush_timer.isActive():
+                self._summary_flush_timer.stop()
+            self._summary_refresh_pending = False
+            self._refresh_summary()
+            return
+
+        self._summary_refresh_pending = True
+        if not self._summary_flush_timer.isActive():
+            self._summary_flush_timer.start(50)
+
+    def _flush_scheduled_summary_refresh(self) -> None:
+        if not getattr(self, "_summary_refresh_pending", False):
+            return
+        self._summary_refresh_pending = False
+        self._refresh_summary()
 
 
 

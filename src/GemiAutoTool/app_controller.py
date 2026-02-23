@@ -1,5 +1,6 @@
 """Reusable automation orchestration for CLI and GUI entrypoints."""
 
+import concurrent.futures
 import logging
 import random
 import string
@@ -15,6 +16,7 @@ from GemiAutoTool.services import (
     InputService,
     PaymentDataService,
     SubscriptionOutputService,
+    force_close_all_active_browsers,
 )
 from GemiAutoTool.tasks import run_browser_task
 
@@ -43,10 +45,11 @@ class AutomationController:
         return self._is_running
 
     def stop(self) -> None:
-        """Best-effort stop: prevents scheduling new tasks and waits for running tasks to finish."""
+        """Hard stop: stop scheduling new tasks and force-close active browser windows."""
         self._stop_event.set()
-        logger.warning("收到停止请求：将停止创建新任务，并等待已启动任务结束。")
-        self._emit("stop_requested")
+        closed = force_close_all_active_browsers()
+        logger.warning("收到硬停止请求：停止创建新任务，并强制关闭活动浏览器窗口（已关闭 %s 个）。", closed)
+        self._emit("stop_requested", hard=True, force_closed_browsers=closed)
 
     def set_paths(self, *, input_dir: str | None = None, output_dir: str | None = None) -> None:
         if input_dir:
@@ -58,6 +61,7 @@ class AutomationController:
         self,
         max_concurrent_windows: int | None = None,
         launch_delay_seconds: float = 0.5,
+        browser_window_mode: str = "headless",
         retry_emails: list[str] | set[str] | None = None,
     ) -> bool:
         if self._is_running:
@@ -109,52 +113,88 @@ class AutomationController:
                 self._emit("run_error", message=f"初始化支付数据失败: {e}")
                 return False
 
-            max_workers = max_concurrent_windows or MAX_CONCURRENT_WINDOWS
-            task_count = min(len(accounts), max_workers)
-            logger.info("成功加载 %s 个账号，准备启动 %s 个并发任务...", len(accounts), task_count)
+            max_workers = max(1, int(max_concurrent_windows or MAX_CONCURRENT_WINDOWS))
+            planned_task_count = len(accounts)
+            logger.info("成功加载 %s 个账号，准备以 %s 并发执行...", planned_task_count, max_workers)
+            browser_window_mode = str(browser_window_mode or "headless").strip().lower() or "headless"
             self._emit(
                 "run_started",
                 total_accounts=len(accounts),
-                scheduled_tasks=task_count,
+                scheduled_tasks=planned_task_count,
                 max_concurrent=max_workers,
                 input_dir=self._input_dir,
                 output_dir=self._output_dir,
+                browser_window_mode=browser_window_mode,
                 retry_mode=bool(retry_email_set),
                 retry_candidates=len(retry_email_set or []),
             )
 
-            threads: list[threading.Thread] = []
+            launched_tasks = 0
+            next_account_index = 0
+            stop_schedule_logged = False
+            in_flight: dict[concurrent.futures.Future[None], tuple[int, str, str]] = {}
 
-            for i in range(task_count):
-                if self._stop_event.is_set():
-                    logger.warning("检测到停止请求，停止继续创建任务线程。")
-                    break
-
-                account = accounts[i]
+            def schedule_one(account_index: int, executor: concurrent.futures.ThreadPoolExecutor) -> None:
+                nonlocal launched_tasks
+                account = accounts[account_index]
                 task_name = f"Task_{''.join(random.choices(string.ascii_uppercase + string.digits, k=4))}"
                 self._emit(
                     "task_scheduled",
                     task_name=task_name,
                     email=account.email,
-                    index=i,
+                    index=account_index,
                 )
-
-                thread = threading.Thread(
-                    name=task_name,
-                    target=self._task_runner_wrapper,
-                    args=(account, task_name, output_service, payment_data_service),
+                future = executor.submit(
+                    self._task_runner_wrapper,
+                    account,
+                    task_name,
+                    output_service,
+                    payment_data_service,
+                    browser_window_mode,
                 )
-                threads.append(thread)
-                thread.start()
-                time.sleep(launch_delay_seconds)
+                in_flight[future] = (account_index, task_name, account.email)
+                launched_tasks += 1
+                if launch_delay_seconds > 0:
+                    time.sleep(launch_delay_seconds)
 
-            for thread in threads:
-                thread.join()
+            with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+                while next_account_index < len(accounts) and len(in_flight) < max_workers and not self._stop_event.is_set():
+                    schedule_one(next_account_index, executor)
+                    next_account_index += 1
+
+                while in_flight:
+                    done, _ = concurrent.futures.wait(
+                        in_flight.keys(),
+                        timeout=0.2,
+                        return_when=concurrent.futures.FIRST_COMPLETED,
+                    )
+
+                    for future in done:
+                        _, task_name, email = in_flight.pop(future)
+                        try:
+                            future.result()
+                        except Exception as e:  # Defensive: _task_runner_wrapper should catch task errors.
+                            logger.exception("任务 Future 出现未捕获异常 [%s/%s]: %s", task_name, email, e)
+
+                    if self._stop_event.is_set() and next_account_index < len(accounts) and not stop_schedule_logged:
+                        logger.warning(
+                            "检测到停止请求，停止继续创建任务（剩余 %s 个账号未启动）。",
+                            len(accounts) - next_account_index,
+                        )
+                        stop_schedule_logged = True
+
+                    while (
+                        next_account_index < len(accounts)
+                        and len(in_flight) < max_workers
+                        and not self._stop_event.is_set()
+                    ):
+                        schedule_one(next_account_index, executor)
+                        next_account_index += 1
 
             logger.info("=== 所有自动化任务已全部结束 ===")
             self._emit(
                 "run_finished",
-                launched_tasks=len(threads),
+                launched_tasks=launched_tasks,
                 stopped=self._stop_event.is_set(),
             )
             run_finished_emitted = True
@@ -166,7 +206,7 @@ class AutomationController:
             if not run_finished_emitted:
                 self._emit("run_finished", launched_tasks=0, stopped=False)
 
-    def _task_runner_wrapper(self, account, task_name, output_service, payment_data_service) -> None:
+    def _task_runner_wrapper(self, account, task_name, output_service, payment_data_service, browser_window_mode: str) -> None:
         self._emit("task_started", task_name=task_name, email=account.email)
         business_result: dict[str, Any] | None = None
 
@@ -195,6 +235,7 @@ class AutomationController:
                 task_name,
                 output_service,
                 payment_data_service,
+                browser_window_mode=browser_window_mode,
                 event_callback=on_task_event,
             )
             if business_result is None and isinstance(result_summary, dict):

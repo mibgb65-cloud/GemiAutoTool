@@ -297,7 +297,7 @@ class MainWindowResultsMixin:
 
     def _on_results_table_item_double_clicked(self, item: QtWidgets.QTableWidgetItem) -> None:
         if item.column() == 2:
-            self._open_selected_result_link()
+            self._copy_selected_result_link()
 
     @staticmethod
     def _extract_first_url(text: str) -> str:

@@ -32,7 +32,11 @@ class MainWindow(
         self._worker: AutomationWorker | None = None
         self._task_rows: dict[str, int] = {}
         self._task_state_map: dict[str, dict[str, str]] = {}
+        self._current_run_task_names: set[str] = set()
         self._scheduled_tasks_total = 0
+        self._launched_tasks_total = 0
+        self._stop_requested_in_run = False
+        self._last_run_stopped = False
         self._data_editors: dict[str, QtWidgets.QPlainTextEdit] = {}
         self._ui_settings = self._load_local_ui_settings()
         self._init_results_page_state()
