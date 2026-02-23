@@ -1,16 +1,19 @@
 # GemiAutoTool/actions/google_one.py
 
+import logging
 import time
 from selenium.webdriver.common.by import By
 from GemiAutoTool.exceptions import SubscriptionCheckError
 
+logger = logging.getLogger(__name__)
+
 
 def check_subscription(driver, task_name: str, retry_count=0) -> tuple[str, str]:
     """跳转并检测订阅状态"""
-    print(f"[{task_name}] 正在检测订阅状态 (尝试次数: {retry_count + 1})...")
+    logger.info("正在检测订阅状态 (尝试次数: %s)...", retry_count + 1)
 
     if retry_count > 0:
-        print(f"[{task_name}] 🔄 正在刷新页面重试...")
+        logger.info("正在刷新页面重试...")
         driver.refresh()
     else:
         driver.get("https://one.google.com/ai-student")
@@ -54,7 +57,7 @@ def check_subscription(driver, task_name: str, retry_count=0) -> tuple[str, str]
             # 验证提取的链接有效性
             if found_link and "services.sheerid.com/verify" in found_link:
                 if "verificationId=" in found_link and not found_link.split("verificationId=")[-1].strip():
-                    print(f"[{task_name}] ⚠️ 提取到无效链接 (ID为空)，准备重试...")
+                    logger.warning("提取到无效链接 (ID为空)，准备重试...")
                     if retry_count < 3:
                         return check_subscription(driver, task_name, retry_count + 1)
                     else:

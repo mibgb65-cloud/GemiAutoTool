@@ -7,3 +7,4 @@ selenium
 undetected-chromedriver
 setuptools
 selenium-stealth
+contextvars

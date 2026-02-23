@@ -1,8 +1,11 @@
 # GemiAutoTool/services/input_service.py
 
+import logging
 import os
 from GemiAutoTool.config import INPUT_DIR
 from GemiAutoTool.exceptions import InputFileNotFoundError, InputFileReadError
+
+logger = logging.getLogger(__name__)
 
 class InputService:
     @staticmethod
@@ -21,7 +24,7 @@ class InputService:
         try:
             with open(account_file, "r", encoding="utf-8") as f:
                 content = f.read()
-                print(f"📄 [Input Service] 成功读取账号文件: account.txt")
+                logger.info("成功读取账号文件: account.txt")
                 return content
         except Exception as e:
             raise InputFileReadError(f"读取 account.txt 时发生错误: {e}") from e
