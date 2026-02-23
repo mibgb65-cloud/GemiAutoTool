@@ -1,11 +1,18 @@
-﻿customtkinter
-pandas
+# Runtime dependencies
+PySide6
 pyotp
-python-dateutil
-requests
 selenium
 undetected-chromedriver
-setuptools
 selenium-stealth
+requests
+python-dateutil
+
+# Legacy/optional dependencies (kept for compatibility with historical scripts/workflows)
+customtkinter
+pandas
 contextvars
-PySide6
+setuptools
+
+# Build dependencies (PyInstaller packaging)
+pyinstaller
+pyinstaller-hooks-contrib

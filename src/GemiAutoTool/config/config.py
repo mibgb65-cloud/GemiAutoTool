@@ -1,6 +1,7 @@
 # GemiAutoTool/config/config.py
 
 import os
+import sys
 
 # 定义 15 个不同的浏览器指纹配置
 BROWSER_FINGERPRINTS = [
@@ -54,8 +55,12 @@ PAYMENT_ACTION_ADD_CARD_XPATHS = [
 # 获取当前 config.py 所在目录的绝对路径
 _current_dir = os.path.dirname(os.path.abspath(__file__))
 
-# 向上推两级，定位到项目根目录 (GemiAutoTool)
-PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(_current_dir)))
+# 打包为 exe 后，使用可执行文件所在目录作为项目根目录，确保 input/output/ui_settings 稳定落盘。
+if getattr(sys, "frozen", False):
+    PROJECT_ROOT = os.path.dirname(os.path.abspath(sys.executable))
+else:
+    # 向上推两级，定位到项目根目录 (GemiAutoTool)
+    PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(_current_dir)))
 
 # 定义统一的输出目录路径
 OUTPUT_DIR = os.path.join(PROJECT_ROOT, "output")

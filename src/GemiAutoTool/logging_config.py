@@ -69,6 +69,16 @@ def _resolve_log_level(env_name: str, default: int) -> int:
     return getattr(logging, raw.strip().upper(), default)
 
 
+def _stream_supports_tty(stream: object) -> bool:
+    isatty = getattr(stream, "isatty", None)
+    if not callable(isatty):
+        return False
+    try:
+        return bool(isatty())
+    except Exception:
+        return False
+
+
 def setup_logging(level: int | str = logging.INFO) -> None:
     """Configure console and rotating file logging once."""
     root_logger = logging.getLogger()
@@ -88,7 +98,9 @@ def setup_logging(level: int | str = logging.INFO) -> None:
 
     console_level = _resolve_log_level("GEMI_LOG_LEVEL", int(default_level))
     file_level = _resolve_log_level("GEMI_LOG_FILE_LEVEL", console_level)
-    enable_color = _parse_bool_env("GEMI_LOG_COLOR", sys.stdout.isatty()) and not _parse_bool_env("NO_COLOR", False)
+    console_stream = sys.stdout if sys.stdout is not None else sys.stderr
+    console_stream_is_tty = _stream_supports_tty(console_stream)
+    enable_color = _parse_bool_env("GEMI_LOG_COLOR", console_stream_is_tty) and not _parse_bool_env("NO_COLOR", False)
 
     base_format = (
         "%(asctime)s | %(levelname)-8s | %(threadName)s | task=%(task_name)s | %(name)s | %(message)s"
@@ -104,12 +116,6 @@ def setup_logging(level: int | str = logging.INFO) -> None:
     )
     context_filter = TaskContextFilter()
 
-    # Use stdout instead of stderr so terminals/IDEs don't render all logs as "error/red".
-    console_handler = logging.StreamHandler(stream=sys.stdout)
-    console_handler.setLevel(console_level)
-    console_handler.setFormatter(console_formatter)
-    console_handler.addFilter(context_filter)
-
     file_handler = RotatingFileHandler(
         log_file,
         maxBytes=int(os.getenv("GEMI_LOG_MAX_BYTES", str(2 * 1024 * 1024))),
@@ -122,8 +128,16 @@ def setup_logging(level: int | str = logging.INFO) -> None:
 
     root_logger.setLevel(min(console_level, file_level))
     root_logger.handlers.clear()
-    root_logger.addHandler(console_handler)
     root_logger.addHandler(file_handler)
+
+    if console_stream is not None:
+        # Prefer stdout so terminals/IDEs don't render all logs as "error/red".
+        console_handler = logging.StreamHandler(stream=console_stream)
+        console_handler.setLevel(console_level)
+        console_handler.setFormatter(console_formatter)
+        console_handler.addFilter(context_filter)
+        root_logger.addHandler(console_handler)
+
     root_logger._gemi_logging_configured = True  # type: ignore[attr-defined]
 
 
