@@ -1,0 +1,9 @@
+﻿customtkinter
+pandas
+pyotp
+python-dateutil
+requests
+selenium
+undetected-chromedriver
+setuptools
+selenium-stealth
