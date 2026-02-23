@@ -9,11 +9,12 @@ logger = logging.getLogger(__name__)
 
 class InputService:
     @staticmethod
-    def read_accounts_text() -> str:
+    def read_accounts_text(input_dir: str | None = None) -> str:
         """
         从 input/account.txt 文件中读取账号原始文本
         """
-        account_file = os.path.join(INPUT_DIR, "account.txt")
+        resolved_input_dir = input_dir or INPUT_DIR
+        account_file = os.path.join(resolved_input_dir, "account.txt")
 
         # 检查文件是否存在
         if not os.path.exists(account_file):
@@ -24,7 +25,7 @@ class InputService:
         try:
             with open(account_file, "r", encoding="utf-8") as f:
                 content = f.read()
-                logger.info("成功读取账号文件: account.txt")
+                logger.info("成功读取账号文件: %s", account_file)
                 return content
         except Exception as e:
             raise InputFileReadError(f"读取 account.txt 时发生错误: {e}") from e

@@ -8,3 +8,4 @@ undetected-chromedriver
 setuptools
 selenium-stealth
 contextvars
+PySide6
