@@ -12,20 +12,21 @@ logger = logging.getLogger(__name__)
 
 
 class PaymentDataService:
-    def __init__(self):
+    def __init__(self, input_dir: str | None = None):
         self.lock = threading.Lock()
         self.cards = []
         self.names = []
         self.zip_codes = []
         self.card_index = 0  # 用于记录当前取到了第几张卡
+        self.input_dir = input_dir or INPUT_DIR
 
         self._load_all_data()
 
     def _load_all_data(self):
         """内部方法：在程序启动时一次性把三个 txt 的内容加载到内存中"""
-        card_file = os.path.join(INPUT_DIR, "card.txt")
-        name_file = os.path.join(INPUT_DIR, "name.txt")
-        zip_file = os.path.join(INPUT_DIR, "zip_code.txt")
+        card_file = os.path.join(self.input_dir, "card.txt")
+        name_file = os.path.join(self.input_dir, "name.txt")
+        zip_file = os.path.join(self.input_dir, "zip_code.txt")
 
         # 1. 加载姓名
         if os.path.exists(name_file):

@@ -76,3 +76,8 @@ class PaymentProcessError(GemiAutoToolBaseException):
 class OutputWriteError(GemiAutoToolBaseException):
     """结果文件写入失败"""
     pass
+
+
+class OutputReadError(GemiAutoToolBaseException):
+    """结果文件读取失败"""
+    pass
