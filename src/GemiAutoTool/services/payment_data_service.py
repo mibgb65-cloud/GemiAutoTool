@@ -1,11 +1,14 @@
 # GemiAutoTool/services/payment_data_service.py
 
+import logging
 import os
 import random
 import threading
 from GemiAutoTool.config import INPUT_DIR
 from GemiAutoTool.domain import PaymentInfo
 from GemiAutoTool.exceptions import PaymentDataIncompleteError, PaymentDataParseError, InputFileReadError
+
+logger = logging.getLogger(__name__)
 
 
 class PaymentDataService:
@@ -84,8 +87,12 @@ class PaymentDataService:
             except Exception as e:
                 raise InputFileReadError(f"读取信用卡文件失败: {card_file}, 错误: {e}") from e
 
-        print(
-            f"📦 [Data Service] 成功加载数据: 信用卡 {len(self.cards)} 张, 姓名 {len(self.names)} 个, 邮编 {len(self.zip_codes)} 个。")
+        logger.info(
+            "成功加载数据: 信用卡 %s 张, 姓名 %s 个, 邮编 %s 个。",
+            len(self.cards),
+            len(self.names),
+            len(self.zip_codes),
+        )
 
     def get_next_payment_info(self) -> PaymentInfo:
         """

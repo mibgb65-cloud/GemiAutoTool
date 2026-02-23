@@ -1,6 +1,8 @@
-
+import logging
 from typing import List
 from GemiAutoTool.domain import GoogleAccount
+
+logger = logging.getLogger(__name__)
 
 
 class AccountService:
@@ -24,6 +26,6 @@ class AccountService:
                 )
                 accounts.append(account)
             else:
-                print(f"⚠️ 忽略格式错误的账号行: {line}")
+                logger.warning("忽略格式错误的账号行: %s", line)
 
         return accounts

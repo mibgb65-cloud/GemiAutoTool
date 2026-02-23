@@ -1,5 +1,6 @@
 # GemiAutoTool/actions/payment_action.py
 
+import logging
 import time
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
@@ -12,6 +13,8 @@ from GemiAutoTool.actions.google_one import check_subscription
 from GemiAutoTool.config import PAYMENT_ACTION_TIMINGS, PAYMENT_ACTION_ADD_CARD_XPATHS
 from GemiAutoTool.exceptions import PaymentProcessError, SubscriptionCheckError
 
+logger = logging.getLogger(__name__)
+
 
 def fill_payment_form(driver, payment: PaymentInfo, task_name: str) -> tuple[bool, str]:
     """自动填写信用卡表单并提交订阅"""
@@ -19,7 +22,7 @@ def fill_payment_form(driver, payment: PaymentInfo, task_name: str) -> tuple[boo
     DOUBLE_TAB_SLEEP = PAYMENT_ACTION_TIMINGS["double_tab_sleep"]
     TYPING_SPEED = PAYMENT_ACTION_TIMINGS["typing_speed"]
     ACTION_PAUSE = PAYMENT_ACTION_TIMINGS["action_pause"]
-    print(f"[{task_name}] 💳 开始处理支付页面...")
+    logger.info("开始处理支付页面...")
 
     try:
         # 1. Offer
@@ -30,7 +33,7 @@ def fill_payment_form(driver, payment: PaymentInfo, task_name: str) -> tuple[boo
         time.sleep(PAYMENT_ACTION_TIMINGS["offer_after_click_sleep"])
 
         # 2. Add Card
-        print(f"[{task_name}] -> 在 Iframe 中寻找 'Add card'...")
+        logger.info("在 Iframe 中寻找 'Add card'...")
         target_xpaths = PAYMENT_ACTION_ADD_CARD_XPATHS
         add_btn = None
 
@@ -42,21 +45,21 @@ def fill_payment_form(driver, payment: PaymentInfo, task_name: str) -> tuple[boo
                 # 切入 iframe
                 driver.switch_to.frame(f)
 
-                # 在此 iframe 中快速探测 (将超时时间缩短为 2 秒，加快探测速度)
+                # 在此 iframe 中快速探测
                 for xp in target_xpaths:
                     try:
                         add_btn = WebDriverWait(driver, PAYMENT_ACTION_TIMINGS["iframe_probe_timeout"]).until(
                             EC.element_to_be_clickable((By.XPATH, xp))
                         )
                         if add_btn:
-                            break  # 找到了对应的 xpath，跳出 xpath 循环
+                            break
                     except:
-                        continue  # 当前 xpath 没找到，继续试下一个 xpath
+                        continue
 
                 if add_btn:
                     # 核心：在切回主页面【之前】，执行点击！
                     driver.execute_script("arguments[0].click();", add_btn)
-                    print(f"[{task_name}] -> 成功在 Iframe 中点击 Add card")
+                    logger.info("成功在 Iframe 中点击 Add card")
                     driver.switch_to.default_content()  # 点击完切回主页面
                     break  # 任务完成，跳出 iframe 遍历循环
                 else:
@@ -68,7 +71,7 @@ def fill_payment_form(driver, payment: PaymentInfo, task_name: str) -> tuple[boo
                 driver.switch_to.default_content()
 
         if not add_btn:
-            print(f"[{task_name}] ⚠️ 未找到 Add card (可能已直接显示表单或网络延迟)")
+            logger.warning("未找到 Add card (可能已直接显示表单或网络延迟)")
 
         # 稍微等待弹窗或新表单的动画加载
         time.sleep(PAYMENT_ACTION_TIMINGS["add_card_form_animation_sleep"])
@@ -116,30 +119,30 @@ def fill_payment_form(driver, payment: PaymentInfo, task_name: str) -> tuple[boo
         time.sleep(TAB_SLEEP)
 
         # 4. 保存
-        print(f"[{task_name}] -> 保存卡片...")
+        logger.info("保存卡片...")
         ActionChains(driver).send_keys(Keys.TAB).pause(ACTION_PAUSE).send_keys(Keys.TAB).pause(ACTION_PAUSE).send_keys(Keys.TAB).perform()
         time.sleep(TAB_SLEEP)
         ActionChains(driver).send_keys(Keys.ENTER).perform()
 
-        print(f"[{task_name}] -> 等待保存跳转 (10s)...")
+        logger.info("等待保存跳转 (10s)...")
         time.sleep(PAYMENT_ACTION_TIMINGS["save_redirect_wait"])
 
         # 5. 订阅
-        print(f"[{task_name}] -> 点击订阅...")
+        logger.info("点击订阅...")
         ActionChains(driver).send_keys(Keys.TAB).pause(ACTION_PAUSE).send_keys(Keys.TAB).pause(ACTION_PAUSE).send_keys(Keys.TAB).pause(
             ACTION_PAUSE).send_keys(Keys.TAB).pause(ACTION_PAUSE).send_keys(Keys.TAB).perform()
         time.sleep(TAB_SLEEP)
         ActionChains(driver).send_keys(Keys.ENTER).perform()
 
-        print(f"[{task_name}] ⏳ 等待订阅处理 (15s)...")
+        logger.info("等待订阅处理 (15s)...")
         time.sleep(PAYMENT_ACTION_TIMINGS["subscribe_process_wait"])
 
         # 6. 最终检查
-        print(f"[{task_name}] 🔄 最终校验...")
+        logger.info("最终校验...")
         final_status, _ = check_subscription(driver, task_name)
 
         if "已订阅" in final_status:
-            print(f"[{task_name}] 🎉 支付并订阅成功！")
+            logger.info("支付并订阅成功")
             return True, "成功"
         else:
             return False, f"流程走完但状态为: {final_status}"

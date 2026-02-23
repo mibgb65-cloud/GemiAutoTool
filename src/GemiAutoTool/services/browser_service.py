@@ -1,5 +1,6 @@
 # GemiAutoTool/services/browser_service.py
 
+import logging
 import undetected_chromedriver as uc
 import threading
 import time
@@ -13,6 +14,7 @@ from GemiAutoTool.exceptions import BrowserInitError
 
 # 创建一个全局的线程锁，防止初始化冲突
 browser_init_lock = threading.Lock()
+logger = logging.getLogger(__name__)
 
 
 class IsolatedBrowser:
@@ -22,11 +24,15 @@ class IsolatedBrowser:
         self.temp_profile_dir = None
 
     def start_browser(self, login_url):
-        print(f"[{self.profile_name}] 准备启动浏览器...")
+        logger.info("准备启动浏览器...")
 
         fingerprint = random.choice(BROWSER_FINGERPRINTS)
-        print(
-            f"[{self.profile_name}] 🎲 抽中指纹 -> OS: {fingerprint['os']}, 分辨率: {fingerprint['resolution']}, 语言: {fingerprint['lang']}")
+        logger.info(
+            "抽中指纹 -> OS: %s, 分辨率: %s, 语言: %s",
+            fingerprint["os"],
+            fingerprint["resolution"],
+            fingerprint["lang"],
+        )
 
         self.temp_profile_dir = tempfile.mkdtemp(prefix=f"uc_profile_{self.profile_name}_")
 
@@ -43,25 +49,25 @@ class IsolatedBrowser:
         try:
             with browser_init_lock:
                 self.driver = uc.Chrome(options=options)
-                print(f"[{self.profile_name}] 浏览器启动成功，原生窗口大小为 {fingerprint['resolution']}！")
+                logger.info("浏览器启动成功，原生窗口大小为 %s", fingerprint["resolution"])
 
             self.driver.get(login_url)
-            print(f"[{self.profile_name}] 登录页面已加载...")
+            logger.info("登录页面已加载")
             return self.driver
 
         except Exception as e:
             raise BrowserInitError(f"[{self.profile_name}] 启动浏览器失败: {e}") from e
 
     def close_browser(self):
-        print(f"[{self.profile_name}] 任务结束，正在关闭并清理缓存...")
+        logger.info("任务结束，正在关闭并清理缓存...")
         if self.driver is not None:
             try:
                 self.driver.quit()
             except Exception as e:
-                print(f"[{self.profile_name}] 关闭浏览器时发生异常: {e}")
+                logger.warning("关闭浏览器时发生异常: %s", e)
 
         time.sleep(2)
 
         if self.temp_profile_dir and os.path.exists(self.temp_profile_dir):
             shutil.rmtree(self.temp_profile_dir, ignore_errors=True)
-            print(f"[{self.profile_name}] ✅ 缓存已彻底清除！")
+            logger.info("缓存已彻底清除")

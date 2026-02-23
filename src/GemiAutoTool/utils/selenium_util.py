@@ -1,10 +1,13 @@
 # GemiAutoTool/utils/selenium_util.py
 
+import logging
 import time
 import random
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException
+
+logger = logging.getLogger(__name__)
 
 def random_sleep(min_seconds=1, max_seconds=3):
     """随机等待一段时间，模拟人类行为"""
@@ -28,10 +31,10 @@ def wait_and_type(driver, by, locator, text, timeout=20, task_name="Task"):
         random_sleep(1, 2)
         return True
     except TimeoutException:
-        print(f"[{task_name}] ⚠️ 输入超时，未找到元素: {locator}")
+        logger.warning("输入超时，未找到元素: %s", locator)
         return False
     except Exception as e:
-        print(f"[{task_name}] ⚠️ 输入异常 ({locator}): {e}")
+        logger.warning("输入异常 (%s): %s", locator, e)
         return False
 
 def wait_and_click(driver, by, locator, timeout=20, task_name="Task"):
@@ -44,10 +47,10 @@ def wait_and_click(driver, by, locator, timeout=20, task_name="Task"):
         element.click()
         return True
     except TimeoutException:
-        print(f"[{task_name}] ⚠️ 点击超时，未找到可点击元素: {locator}")
+        logger.warning("点击超时，未找到可点击元素: %s", locator)
         return False
     except Exception as e:
-        print(f"[{task_name}] ⚠️ 点击异常 ({locator}): {e}")
+        logger.warning("点击异常 (%s): %s", locator, e)
         return False
 
 def is_element_exist(driver, by, locator, timeout=5):

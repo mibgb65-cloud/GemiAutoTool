@@ -1,5 +1,6 @@
 # GemiAutoTool/main.py
 
+import logging
 import threading
 import time
 import string
@@ -14,38 +15,42 @@ from GemiAutoTool.services import (
 )
 from GemiAutoTool.tasks import run_browser_task
 from GemiAutoTool.exceptions import GemiAutoToolBaseException
+from GemiAutoTool.logging_config import setup_logging
+
+logger = logging.getLogger(__name__)
 
 def main():
-    print("=== GemiAutoTool 自动化系统启动 ===")
+    setup_logging()
+    logger.info("=== GemiAutoTool 自动化系统启动 ===")
 
     # 1. 获取账号数据 (改为从 input/account.txt 文件读取)
     try:
         raw_accounts_text = InputService.read_accounts_text()
     except GemiAutoToolBaseException as e:
-        print(f"⚠️ 启动失败: {e}")
+        logger.error("启动失败: %s", e)
         return
 
     # 检查是否读取到了内容
     if not raw_accounts_text.strip():
-        print("没有读取到账号内容，程序退出。")
+        logger.warning("没有读取到账号内容，程序退出。")
         return
 
     # 解析账号
     accounts = AccountService.parse_accounts_from_text(raw_accounts_text)
 
     if not accounts:
-        print("没有可用的账号，程序退出。")
+        logger.warning("没有可用的账号，程序退出。")
         return
 
     output_service = SubscriptionOutputService()
     try:
         payment_data_service = PaymentDataService()
     except GemiAutoToolBaseException as e:
-        print(f"⚠️ 初始化支付数据失败: {e}")
+        logger.error("初始化支付数据失败: %s", e)
         return
 
     task_count = min(len(accounts), MAX_CONCURRENT_WINDOWS)
-    print(f"成功加载 {len(accounts)} 个账号，准备启动 {task_count} 个并发任务...")
+    logger.info("成功加载 %s 个账号，准备启动 %s 个并发任务...", len(accounts), task_count)
 
     threads = []
 
@@ -54,7 +59,11 @@ def main():
         account = accounts[i]
         task_name = f"Task_{''.join(random.choices(string.ascii_uppercase + string.digits, k=4))}"
 
-        t = threading.Thread(target=run_browser_task, args=(account, task_name, output_service, payment_data_service))
+        t = threading.Thread(
+            name=task_name,
+            target=run_browser_task,
+            args=(account, task_name, output_service, payment_data_service),
+        )
         threads.append(t)
         t.start()
         time.sleep(0.5)  # 错峰启动，防止卡顿
@@ -63,7 +72,7 @@ def main():
     for t in threads:
         t.join()
 
-    print("=== 所有自动化任务已全部结束 ===")
+    logger.info("=== 所有自动化任务已全部结束 ===")
 
 
 if __name__ == "__main__":
