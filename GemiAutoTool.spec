@@ -18,9 +18,21 @@ datas = [
 ]
 
 # 打包时显式收集关键依赖（Qt / Selenium / UC），避免运行时缺包。
+# 注意：不要对 PySide6 使用 collect_all()，否则会把 Qt 全家桶（WebEngine/QML/Designer/3D/...）
+# 一起打进去，导致 onedir 体积暴涨。这里仅声明项目实际使用到的 Qt 模块。
 hiddenimports = []
 
-for package_name in ("PySide6", "shiboken6", "selenium", "undetected_chromedriver", "selenium_stealth"):
+qt_hiddenimports = [
+    "PySide6",
+    "shiboken6",
+    "PySide6.QtCore",
+    "PySide6.QtGui",
+    "PySide6.QtWidgets",
+]
+
+hiddenimports.extend(qt_hiddenimports)
+
+for package_name in ("selenium", "undetected_chromedriver", "selenium_stealth"):
     try:
         pkg_datas, pkg_binaries, pkg_hiddenimports = collect_all(package_name)
         datas.extend(pkg_datas)
@@ -39,8 +51,6 @@ for package_name in ("selenium", "undetected_chromedriver", "selenium_stealth"):
 # 确保顶级模块名也在隐藏导入中（某些版本仅收集了子模块列表，运行时仍可能报根模块缺失）
 hiddenimports.extend(
     [
-        "PySide6",
-        "shiboken6",
         "selenium",
         "undetected_chromedriver",
         "selenium_stealth",
@@ -61,7 +71,49 @@ a = Analysis(
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=[],
+    excludes=[
+        # 显式排除高体积但当前 GUI 未使用的 Qt 模块（作为保险）。
+        "PySide6.Qt3DAnimation",
+        "PySide6.Qt3DCore",
+        "PySide6.Qt3DExtras",
+        "PySide6.Qt3DInput",
+        "PySide6.Qt3DLogic",
+        "PySide6.Qt3DRender",
+        "PySide6.QtCharts",
+        "PySide6.QtDataVisualization",
+        "PySide6.QtDesigner",
+        "PySide6.QtGraphs",
+        "PySide6.QtHelp",
+        "PySide6.QtMultimedia",
+        "PySide6.QtMultimediaWidgets",
+        "PySide6.QtNetworkAuth",
+        "PySide6.QtPdf",
+        "PySide6.QtPdfWidgets",
+        "PySide6.QtPositioning",
+        "PySide6.QtQml",
+        "PySide6.QtQuick",
+        "PySide6.QtQuick3D",
+        "PySide6.QtQuickControls2",
+        "PySide6.QtQuickTest",
+        "PySide6.QtRemoteObjects",
+        "PySide6.QtScxml",
+        "PySide6.QtSensors",
+        "PySide6.QtSerialBus",
+        "PySide6.QtSerialPort",
+        "PySide6.QtSpatialAudio",
+        "PySide6.QtSql",
+        "PySide6.QtStateMachine",
+        "PySide6.QtSvgWidgets",
+        "PySide6.QtTest",
+        "PySide6.QtTextToSpeech",
+        "PySide6.QtWebChannel",
+        "PySide6.QtWebEngineCore",
+        "PySide6.QtWebEngineQuick",
+        "PySide6.QtWebEngineWidgets",
+        "PySide6.QtWebSockets",
+        "PySide6.QtXml",
+        "PySide6.QtXmlPatterns",
+    ],
     noarchive=False,
     optimize=0,
 )
