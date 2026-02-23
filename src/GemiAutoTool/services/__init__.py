@@ -5,6 +5,7 @@ from .browser_service import IsolatedBrowser, browser_init_lock, force_close_all
 from .input_service import InputService
 from .output_service import SubscriptionOutputService
 from .payment_data_service import PaymentDataService
+from .verify_service import SheerIDBotVerifyService
 
 __all__ = [
     "AccountService",
@@ -14,4 +15,5 @@ __all__ = [
     "InputService",
     "SubscriptionOutputService",
     "PaymentDataService",
+    "SheerIDBotVerifyService",
 ]

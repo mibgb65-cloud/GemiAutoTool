@@ -81,3 +81,8 @@ class OutputWriteError(GemiAutoToolBaseException):
 class OutputReadError(GemiAutoToolBaseException):
     """结果文件读取失败"""
     pass
+
+
+class VerifyServiceError(GemiAutoToolBaseException):
+    """第三方验证服务调用失败"""
+    pass
