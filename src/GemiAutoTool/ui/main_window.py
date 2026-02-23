@@ -33,6 +33,8 @@ class MainWindow(
         self._task_rows: dict[str, int] = {}
         self._task_state_map: dict[str, dict[str, str]] = {}
         self._current_run_task_names: set[str] = set()
+        self._task_log_parent_items: dict[str, QtWidgets.QTreeWidgetItem] = {}
+        self._task_log_child_counts: dict[str, int] = {}
         self._scheduled_tasks_total = 0
         self._launched_tasks_total = 0
         self._stop_requested_in_run = False

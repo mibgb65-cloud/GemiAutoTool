@@ -39,7 +39,7 @@ class IsolatedBrowser:
 
         fingerprint = random.choice(BROWSER_FINGERPRINTS)
         logger.info(
-            "抽中指纹 -> OS: %s, 分辨率: %s, 语言: %s",
+            "选择指纹 -> OS: %s, 分辨率: %s, 语言: %s",
             fingerprint["os"],
             fingerprint["resolution"],
             fingerprint["lang"],
@@ -59,7 +59,7 @@ class IsolatedBrowser:
         if self.window_mode == "headless":
             options.add_argument("--headless=new")
             options.add_argument("--disable-gpu")
-            logger.warning("[%s] 浏览器模式=无头(实验性)，登录/支付成功率可能下降。", self.profile_name)
+            logger.warning("[%s] 浏览器模式=无头", self.profile_name)
 
         try:
             with browser_init_lock:
@@ -75,7 +75,7 @@ class IsolatedBrowser:
             if self.window_mode == "minimized":
                 try:
                     self.driver.minimize_window()
-                    logger.info("浏览器已最小化（模式=minimized）")
+                    logger.info("浏览器已最小化")
                 except Exception as e:
                     logger.warning("最小化浏览器失败: %s", e)
             self._log_window_metrics()

@@ -156,6 +156,41 @@ class MainWindowMonitorMixin:
         group = QtWidgets.QGroupBox("实时日志")
         layout = QtWidgets.QVBoxLayout(group)
 
+        self.log_tabs = QtWidgets.QTabWidget()
+
+        task_logs_page = QtWidgets.QWidget()
+        task_logs_layout = QtWidgets.QVBoxLayout(task_logs_page)
+        task_logs_layout.setContentsMargins(0, 0, 0, 0)
+        task_logs_layout.setSpacing(6)
+        task_logs_tip = QtWidgets.QLabel("默认收起；每行展示任务、线程状态和最新日志，点击左侧箭头展开查看该任务日志。")
+        task_logs_tip.setStyleSheet("color: #616161;")
+        self.task_log_tree = QtWidgets.QTreeWidget()
+        self.task_log_tree.setColumnCount(3)
+        self.task_log_tree.setHeaderLabels(["任务", "线程状态", "最新日志"])
+        self.task_log_tree.setRootIsDecorated(True)
+        self.task_log_tree.setUniformRowHeights(True)
+        self.task_log_tree.setAlternatingRowColors(True)
+        self.task_log_tree.setIndentation(14)
+        self.task_log_tree.header().setStretchLastSection(True)
+        self.task_log_tree.header().setDefaultAlignment(QtCore.Qt.AlignmentFlag.AlignLeft)
+        self.task_log_tree.header().setSectionResizeMode(0, QtWidgets.QHeaderView.ResizeMode.Interactive)
+        self.task_log_tree.header().setSectionResizeMode(1, QtWidgets.QHeaderView.ResizeMode.Interactive)
+        self.task_log_tree.header().setSectionResizeMode(2, QtWidgets.QHeaderView.ResizeMode.Stretch)
+        self.task_log_tree.setColumnWidth(0, 110)
+        self.task_log_tree.setColumnWidth(1, 90)
+        task_logs_layout.addWidget(task_logs_tip)
+        task_logs_layout.addWidget(self.task_log_tree, 1)
+
+        global_logs_page = QtWidgets.QWidget()
+        global_logs_layout = QtWidgets.QVBoxLayout(global_logs_page)
+        global_logs_layout.setContentsMargins(0, 0, 0, 0)
+        global_logs_layout.setSpacing(6)
+        global_log_options = QtWidgets.QHBoxLayout()
+        self.auto_scroll_log_check = QtWidgets.QCheckBox("自动滚动")
+        self.auto_scroll_log_check.setChecked(True)
+        global_log_options.addWidget(self.auto_scroll_log_check)
+        global_log_options.addStretch(1)
+
         self.log_view = QtWidgets.QPlainTextEdit()
         self.log_view.setReadOnly(True)
         self.log_view.setUndoRedoEnabled(False)
@@ -163,7 +198,13 @@ class MainWindowMonitorMixin:
         font = QtGui.QFont("Consolas")
         font.setStyleHint(QtGui.QFont.StyleHint.Monospace)
         self.log_view.setFont(font)
-        layout.addWidget(self.log_view)
+        global_logs_layout.addLayout(global_log_options)
+        global_logs_layout.addWidget(self.log_view, 1)
+
+        self.log_tabs.addTab(task_logs_page, "按任务日志")
+        self.log_tabs.addTab(global_logs_page, "全局日志")
+        self.log_tabs.setCurrentIndex(0)
+        layout.addWidget(self.log_tabs)
         return group
 
     def _start_run(self) -> None:
@@ -413,6 +454,8 @@ class MainWindowMonitorMixin:
         ts = time_text or datetime.now().strftime("%H:%M:%S")
         line = f"{ts} | {level:<8} | task={task_name} | {logger_name} | {message}"
         self._queue_log_line(line)
+        if task_name and task_name != "-":
+            self._queue_task_log_line(task_name, line)
 
     def _upsert_task_row(
         self,
@@ -435,6 +478,8 @@ class MainWindowMonitorMixin:
                 "stage": "",
                 "result": "",
                 "detail": "",
+                "updated_at": "",
+                "latest_log": "",
             },
         )
         state["email"] = email or state.get("email", "")
@@ -446,6 +491,7 @@ class MainWindowMonitorMixin:
             state["result"] = result
         if detail is not None:
             state["detail"] = detail
+        state["updated_at"] = self._now_text()
 
         row_values = [
             task_name,
@@ -454,7 +500,7 @@ class MainWindowMonitorMixin:
             state["stage"],
             state["result"],
             state["detail"],
-            self._now_text(),
+            state["updated_at"],
         ]
         if row is None:
             row = self.task_table.rowCount()
@@ -471,6 +517,7 @@ class MainWindowMonitorMixin:
                     item.setText(text)
 
         self._colorize_cells(row, state.get("thread_status", ""), state.get("result", ""))
+        self._refresh_task_log_parent_summary(task_name)
 
     def _colorize_cells(self, row: int, thread_status: str, result_text: str) -> None:
         thread_item = self.task_table.item(row, 2)
@@ -499,6 +546,7 @@ class MainWindowMonitorMixin:
         self._task_rows.clear()
         self._task_state_map.clear()
         self._current_run_task_names.clear()
+        self._clear_task_log_tree()
         self._scheduled_tasks_total = 0
         self._launched_tasks_total = 0
         self._stop_requested_in_run = False
@@ -568,6 +616,7 @@ class MainWindowMonitorMixin:
             return
 
         self._pending_log_lines: list[str] = []
+        self._pending_task_log_records: list[tuple[str, str]] = []
         self._summary_refresh_pending = False
 
         self._log_flush_timer = QtCore.QTimer(self)
@@ -586,23 +635,42 @@ class MainWindowMonitorMixin:
         if not self._log_flush_timer.isActive():
             self._log_flush_timer.start(40)
 
-    def _flush_pending_logs(self) -> None:
-        pending = getattr(self, "_pending_log_lines", None)
-        if not pending:
-            return
-        lines = pending[:]
-        self._pending_log_lines.clear()
+    def _queue_task_log_line(self, task_name: str, line: str) -> None:
+        self._ensure_monitor_perf_helpers()
+        self._pending_task_log_records.append((task_name, line))
+        if len(self._pending_task_log_records) > 10000:
+            self._pending_task_log_records = self._pending_task_log_records[-6000:]
+        if not self._log_flush_timer.isActive():
+            self._log_flush_timer.start(40)
 
-        self.log_view.appendPlainText("\n".join(lines))
-        if self.auto_scroll_log_check.isChecked():
-            self.log_view.moveCursor(QtGui.QTextCursor.MoveOperation.End)
+    def _flush_pending_logs(self) -> None:
+        pending_lines = getattr(self, "_pending_log_lines", None) or []
+        pending_task_records = getattr(self, "_pending_task_log_records", None) or []
+        if not pending_lines and not pending_task_records:
+            return
+
+        lines = pending_lines[:]
+        task_records = pending_task_records[:]
+        if pending_lines:
+            self._pending_log_lines.clear()
+        if pending_task_records:
+            self._pending_task_log_records.clear()
+
+        if lines:
+            self.log_view.appendPlainText("\n".join(lines))
+            if getattr(self, "auto_scroll_log_check", None) and self.auto_scroll_log_check.isChecked():
+                self.log_view.moveCursor(QtGui.QTextCursor.MoveOperation.End)
+        if task_records:
+            self._flush_task_log_records(task_records)
 
     def _clear_log_view(self) -> None:
         self._ensure_monitor_perf_helpers()
         if self._log_flush_timer.isActive():
             self._log_flush_timer.stop()
         self._pending_log_lines.clear()
+        self._pending_task_log_records.clear()
         self.log_view.clear()
+        self._clear_task_log_details()
 
     def _schedule_summary_refresh(self, *, force: bool = False) -> None:
         self._ensure_monitor_perf_helpers()
@@ -622,6 +690,93 @@ class MainWindowMonitorMixin:
             return
         self._summary_refresh_pending = False
         self._refresh_summary()
+
+    def _ensure_task_log_parent_item(self, task_name: str) -> QtWidgets.QTreeWidgetItem | None:
+        if not task_name or task_name == "-" or not hasattr(self, "task_log_tree"):
+            return None
+        item = self._task_log_parent_items.get(task_name)
+        if item is not None:
+            return item
+
+        item = QtWidgets.QTreeWidgetItem([task_name, "-", ""])
+        item.setExpanded(False)
+        font = item.font(0)
+        font.setBold(True)
+        item.setFont(0, font)
+        self.task_log_tree.addTopLevelItem(item)
+        self._task_log_parent_items[task_name] = item
+        self._task_log_child_counts.setdefault(task_name, 0)
+        self._refresh_task_log_parent_summary(task_name)
+        return item
+
+    def _format_task_log_parent_summary(self, task_name: str, state: dict[str, str]) -> list[str]:
+        thread_status = str(state.get("thread_status", "") or "-")
+        latest_log = str(state.get("latest_log", "") or "")
+        return [task_name, thread_status, latest_log]
+
+    def _refresh_task_log_parent_summary(self, task_name: str) -> None:
+        if not task_name or task_name == "-" or not hasattr(self, "task_log_tree"):
+            return
+        state = self._task_state_map.get(task_name, {})
+        item = self._ensure_task_log_parent_item(task_name)
+        if item is None:
+            return
+        values = self._format_task_log_parent_summary(task_name, state)
+        for col, text in enumerate(values):
+            if item.text(col) != text:
+                item.setText(col, text)
+
+    def _flush_task_log_records(self, task_records: list[tuple[str, str]]) -> None:
+        if not hasattr(self, "task_log_tree"):
+            return
+        max_lines_per_task = 200
+        self.task_log_tree.setUpdatesEnabled(False)
+        try:
+            for task_name, line in task_records:
+                item = self._ensure_task_log_parent_item(task_name)
+                if item is None:
+                    continue
+                state = self._task_state_map.setdefault(task_name, {})
+                message_only = self._extract_task_log_preview(line)
+                state["latest_log"] = message_only
+                self._refresh_task_log_parent_summary(task_name)
+                child = QtWidgets.QTreeWidgetItem(["", "", message_only])
+                item.addChild(child)
+                count = int(self._task_log_child_counts.get(task_name, 0)) + 1
+                self._task_log_child_counts[task_name] = count
+                if count > max_lines_per_task and item.childCount() > 0:
+                    item.removeChild(item.child(0))
+                    self._task_log_child_counts[task_name] = count - 1
+        finally:
+            self.task_log_tree.setUpdatesEnabled(True)
+
+    def _clear_task_log_details(self) -> None:
+        if not hasattr(self, "task_log_tree"):
+            return
+        self.task_log_tree.setUpdatesEnabled(False)
+        try:
+            for task_name, item in list(self._task_log_parent_items.items()):
+                if item is None:
+                    continue
+                if task_name in self._task_state_map:
+                    self._task_state_map[task_name]["latest_log"] = ""
+                while item.childCount() > 0:
+                    item.removeChild(item.child(0))
+                self._task_log_child_counts[task_name] = 0
+                self._refresh_task_log_parent_summary(task_name)
+        finally:
+            self.task_log_tree.setUpdatesEnabled(True)
+
+    def _clear_task_log_tree(self) -> None:
+        if hasattr(self, "task_log_tree"):
+            self.task_log_tree.clear()
+        self._task_log_parent_items.clear()
+        self._task_log_child_counts.clear()
+
+    def _extract_task_log_preview(self, line: str) -> str:
+        if " | " in line:
+            return line.rsplit(" | ", 1)[-1].strip()
+        return line.strip()
 
 
 

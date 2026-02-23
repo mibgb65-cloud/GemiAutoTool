@@ -19,6 +19,9 @@
 #ifndef AppIconFile
   #define AppIconFile "..\src\GemiAutoTool\ui\assets\app_icon.ico"
 #endif
+#ifndef ChineseMessagesFile
+  #define ChineseMessagesFile AddBackslash(SourcePath) + "languages\ChineseSimplified.isl"
+#endif
 
 [Setup]
 AppId={{6F8E9A44-5A74-4A4D-9D60-73D7B311B0D7}
@@ -41,7 +44,7 @@ SetupIconFile={#AppIconFile}
 UninstallDisplayIcon={app}\{#AppExeName}
 
 [Languages]
-Name: "english"; MessagesFile: "compiler:Default.isl"
+Name: "chinesesimp"; MessagesFile: "{#ChineseMessagesFile}"
 
 [Tasks]
 Name: "desktopicon"; Description: "创建桌面快捷方式"; GroupDescription: "附加任务:"; Flags: unchecked
