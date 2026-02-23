@@ -80,6 +80,7 @@ GemiAutoTool/
 │  └─ run_gui.py                  # GUI 入口
 └─ tools/
    ├─ build_exe.ps1               # Windows EXE 打包脚本（PyInstaller）
+   ├─ build_installer.ps1         # Windows 安装包打包脚本（Inno Setup）
    └─ generate_app_icon_ico.py    # SVG -> ICO 图标生成脚本
 ```
 
@@ -225,6 +226,77 @@ GemiAutoTool-win-x64-v1.0.0.zip
 ```
 
 后续如需安装包，可再使用 `Inno Setup` / `NSIS` 基于 `dist\GemiAutoTool\` 制作安装程序。
+
+## 打包为 Windows 安装程序（Inno Setup）
+
+项目已提供 Inno Setup 安装包脚本，可将 `PyInstaller onedir` 产物封装为安装向导式 `.exe`。
+
+### 前置条件
+
+1. 已成功生成 `PyInstaller` onedir 产物（`dist\GemiAutoTool\`）
+2. 已安装 `Inno Setup 6`（包含 `ISCC.exe`）
+
+### 安装 Inno Setup
+
+官网：<https://jrsoftware.org/isinfo.php>
+
+默认安装后 `ISCC.exe` 常见路径：
+
+```text
+C:\Program Files (x86)\Inno Setup 6\ISCC.exe
+```
+
+### 使用仓库脚本构建安装包（推荐）
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\tools\build_installer.ps1
+```
+
+脚本行为：
+- 自动检查 `dist\GemiAutoTool\GemiAutoTool.exe` 是否存在
+- 自动查找 `ISCC.exe`（常见安装路径或系统 PATH）
+- 使用 `packaging\GemiAutoTool.iss` 构建安装程序
+
+输出目录：
+
+```text
+dist_installer\
+```
+
+### 指定版本号（推荐用于发布）
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\tools\build_installer.ps1 -Version 1.0.0
+```
+
+生成示例：
+
+```text
+dist_installer\GemiAutoTool-Setup-1.0.0.exe
+```
+
+### 清理旧安装包后构建
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\tools\build_installer.ps1 -Clean -Version 1.0.0
+```
+
+### 手动使用 Inno Setup 编译（高级用法）
+
+```powershell
+"C:\Program Files (x86)\Inno Setup 6\ISCC.exe" /Qp /DAppVersion=1.0.0 .\packaging\GemiAutoTool.iss
+```
+
+### 安装包方案说明（当前配置）
+
+- 安装目录默认使用当前用户可写路径（避免 `Program Files` 写入权限问题）：
+  - `{localappdata}\Programs\GemiAutoTool`
+- 安装后可选创建桌面快捷方式
+- 安装完成后可直接启动程序
+- 卸载器自动注册
+- 默认英文安装界面（如本机 Inno Setup 安装了中文语言包，可自行在 `.iss` 中启用）
+
+> 之所以默认安装到用户目录，而不是 `Program Files`，是因为程序运行时会在安装目录下写入 `input/output/logs/ui_settings.json`。
 
 ## 快速开始（推荐流程）
 
