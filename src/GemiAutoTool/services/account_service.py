@@ -1,6 +1,6 @@
 
 from typing import List
-from GemiAutoTool.domain.account import GoogleAccount
+from GemiAutoTool.domain import GoogleAccount
 
 
 class AccountService:

@@ -4,7 +4,8 @@ import os
 import threading
 from datetime import datetime
 from GemiAutoTool.config import OUTPUT_DIR
-from GemiAutoTool.domain.subscription_result import SubscriptionResult
+from GemiAutoTool.domain import SubscriptionResult
+from GemiAutoTool.exceptions import OutputWriteError
 
 
 class SubscriptionOutputService:
@@ -16,11 +17,14 @@ class SubscriptionOutputService:
     def _init_file(self):
         """内部方法：在获取到第一个结果时，以当前时间创建专属的 txt 文件"""
         if self.file_path is None:
-            # 按照 年月日_时分秒 格式生成时间戳
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            filename = f"subscription_results_{timestamp}.txt"
-            self.file_path = os.path.join(OUTPUT_DIR, filename)
-            print(f"\n📄 [Output Service] 成功创建本次运行的记录文件: {filename}\n")
+            try:
+                # 按照 年月日_时分秒 格式生成时间戳
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                filename = f"subscription_results_{timestamp}.txt"
+                self.file_path = os.path.join(OUTPUT_DIR, filename)
+                print(f"\n📄 [Output Service] 成功创建本次运行的记录文件: {filename}\n")
+            except Exception as e:
+                raise OutputWriteError(f"初始化输出文件失败: {e}") from e
 
     def save_result(self, result: SubscriptionResult):
         """
@@ -45,6 +49,9 @@ class SubscriptionOutputService:
 
             # 写入文件并打印日志
             if line:
-                with open(self.file_path, "a", encoding="utf-8") as f:
-                    f.write(line)
-                print(f"📝 [Output Service] 结果已保存: {line.strip()}")
+                try:
+                    with open(self.file_path, "a", encoding="utf-8") as f:
+                        f.write(line)
+                    print(f"📝 [Output Service] 结果已保存: {line.strip()}")
+                except Exception as e:
+                    raise OutputWriteError(f"写入结果文件失败 ({self.file_path}): {e}") from e

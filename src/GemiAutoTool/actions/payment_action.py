@@ -7,9 +7,10 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.action_chains import ActionChains
 from selenium.webdriver.common.keys import Keys
 
-from GemiAutoTool.domain.payment_info import PaymentInfo
+from GemiAutoTool.domain import PaymentInfo
 from GemiAutoTool.actions.google_one import check_subscription
 from GemiAutoTool.config import PAYMENT_ACTION_TIMINGS, PAYMENT_ACTION_ADD_CARD_XPATHS
+from GemiAutoTool.exceptions import PaymentProcessError, SubscriptionCheckError
 
 
 def fill_payment_form(driver, payment: PaymentInfo, task_name: str) -> tuple[bool, str]:
@@ -143,7 +144,8 @@ def fill_payment_form(driver, payment: PaymentInfo, task_name: str) -> tuple[boo
         else:
             return False, f"流程走完但状态为: {final_status}"
 
+    except SubscriptionCheckError as e:
+        raise PaymentProcessError(f"支付流程最终校验失败: {e}") from e
     except Exception as e:
         err = str(e)[:100]
-        print(f"[{task_name}] ❌ 填表/订阅异常: {err}")
-        return False, f"异常: {err}"
+        raise PaymentProcessError(f"填表/订阅异常: {err}") from e

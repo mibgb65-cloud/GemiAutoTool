@@ -2,6 +2,7 @@
 
 import os
 from GemiAutoTool.config import INPUT_DIR
+from GemiAutoTool.exceptions import InputFileNotFoundError, InputFileReadError
 
 class InputService:
     @staticmethod
@@ -13,9 +14,9 @@ class InputService:
 
         # 检查文件是否存在
         if not os.path.exists(account_file):
-            print(f"⚠️ 找不到账号文件: {account_file}")
-            print("请在 input 文件夹下创建 account.txt 并按照格式填入账号。")
-            return ""
+            raise InputFileNotFoundError(
+                f"找不到账号文件: {account_file}。请在 input 文件夹下创建 account.txt 并按照格式填入账号。"
+            )
 
         try:
             with open(account_file, "r", encoding="utf-8") as f:
@@ -23,5 +24,4 @@ class InputService:
                 print(f"📄 [Input Service] 成功读取账号文件: account.txt")
                 return content
         except Exception as e:
-            print(f"⚠️ 读取 account.txt 时发生错误: {e}")
-            return ""
+            raise InputFileReadError(f"读取 account.txt 时发生错误: {e}") from e

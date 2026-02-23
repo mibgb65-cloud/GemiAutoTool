@@ -1,6 +1,7 @@
 # GemiAutoTool/utils/totp_util.py
 
 import pyotp
+from GemiAutoTool.exceptions import TOTPGenerationError
 
 
 class TOTPUtil:
@@ -30,5 +31,4 @@ class TOTPUtil:
             return totp.now()
 
         except Exception as e:
-            print(f"⚠️ 生成 2FA 验证码时发生错误: {e}")
-            return ""
+            raise TOTPGenerationError(f"生成 2FA 验证码失败: {e}") from e
