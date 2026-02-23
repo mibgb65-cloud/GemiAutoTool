@@ -9,7 +9,7 @@ import random
 import os
 
 from GemiAutoTool.config import BROWSER_FINGERPRINTS
-from selenium_stealth import stealth
+from GemiAutoTool.exceptions import BrowserInitError
 
 # 创建一个全局的线程锁，防止初始化冲突
 browser_init_lock = threading.Lock()
@@ -45,21 +45,12 @@ class IsolatedBrowser:
                 self.driver = uc.Chrome(options=options)
                 print(f"[{self.profile_name}] 浏览器启动成功，原生窗口大小为 {fingerprint['resolution']}！")
 
-            print(f"[{self.profile_name}] 🌡️ 正在预热浏览器，积累初始环境和 Cookie...")
-
-            # 2. 访问 Google 首页
-            self.driver.get("https://www.google.com")
-            time.sleep(random.uniform(2.0, 4.0))
-
-            # 3. 有了基础历史记录后，再去访问高风控的登录页
             self.driver.get(login_url)
             print(f"[{self.profile_name}] 登录页面已加载...")
             return self.driver
 
         except Exception as e:
-            print(f"❌ [{self.profile_name}] 启动时发生错误: {e}")
-            self.close_browser()
-            return None
+            raise BrowserInitError(f"[{self.profile_name}] 启动浏览器失败: {e}") from e
 
     def close_browser(self):
         print(f"[{self.profile_name}] 任务结束，正在关闭并清理缓存...")

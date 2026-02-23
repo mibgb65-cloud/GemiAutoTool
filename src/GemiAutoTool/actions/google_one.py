@@ -2,6 +2,7 @@
 
 import time
 from selenium.webdriver.common.by import By
+from GemiAutoTool.exceptions import SubscriptionCheckError
 
 
 def check_subscription(driver, task_name: str, retry_count=0) -> tuple[str, str]:
@@ -63,6 +64,6 @@ def check_subscription(driver, task_name: str, retry_count=0) -> tuple[str, str]
                 return status, found_link
 
     except Exception as e:
-        print(f"[{task_name}] ⚠️ 检测出错: {e}")
+        raise SubscriptionCheckError(f"订阅状态检测失败: {e}") from e
 
     return status, link
